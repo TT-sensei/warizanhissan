@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>わり算の筆算ステップれんしゅう</title>
+  <style>
+    :root { --blue:#2d7ff9; --green:#2e9f59; --red:#e04e4e; --orange:#f09a2b; --bg:#f7f9ff; --text:#223; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif; color:var(--text); background:var(--bg); padding:16px; }
+    .app { max-width:760px; margin:0 auto; background:#fff; border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,.08); padding:20px; }
+    h1 { margin:0 0 10px; font-size:1.6rem; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 12px; }
+    .chip { background:#666; color:#fff; border:none; border-radius:10px; padding:8px 12px; font-size:1rem; font-weight:700; }
+    .chip.active { background:#111; }
+    .status { background:#f0f6ff; border:1px solid #d6e4ff; border-radius:10px; padding:8px 10px; font-weight:700; }
+    .problem { font-size:1.8rem; font-weight:700; padding:10px 14px; background:#eef4ff; border-radius:10px; margin-bottom:14px; }
+    .long-division { font-family:ui-monospace, Menlo, Consolas, monospace; font-size:1.35rem; line-height:1.5; background:#fcfdff; border:2px solid #dce7ff; border-radius:12px; padding:12px; min-height:210px; white-space:pre; overflow-x:auto; }
+    .buttons { display:grid; grid-template-columns:repeat(2,minmax(130px,1fr)); gap:10px; margin-top:16px; }
+    button { border:none; border-radius:12px; color:#fff; font-size:1.2rem; font-weight:700; padding:14px 10px; cursor:pointer; min-height:56px; }
+    .tateru{background:var(--blue);} .kakeru{background:var(--green);} .hiku{background:var(--red);} .orosu{background:var(--orange);} .submit,.next-btn{background:#444;font-size:1rem;min-height:44px;padding:10px 14px;}
+    .input-wrap { margin-top:14px; display:none; gap:8px; align-items:center; flex-wrap:wrap; }
+    .input-wrap.show { display:flex; }
+    input[type="text"] { font-size:1.3rem; width:180px; padding:10px; border-radius:10px; border:2px solid #c6d5ff; }
+    .next-wrap { margin-top:12px; }
+    .message { margin-top:14px; font-size:1.05rem; min-height:1.5em; font-weight:700; }
+    .ok{color:#1f7a42;} .ng{color:#c22c2c;} .hint{font-size:.95rem; margin-top:6px; color:#6b3f00; min-height:1.3em;}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>わり算の筆算 ステップれんしゅう</h1>
+    <div class="row" id="levelRow">
+      <button class="chip active" data-level="1">レベル1</button>
+      <button class="chip" data-level="2">レベル2</button>
+    </div>
+    <div class="row" id="modeRow">
+      <button class="chip active" data-mode="normal">れんしゅう</button>
+      <button class="chip" data-mode="challenge">チャレンジ</button>
+      <button id="startChallengeBtn" class="chip">スタート(60びょう)</button>
+    </div>
+    <div class="row">
+      <div id="timer" class="status">のこり: 60秒</div>
+      <div id="score" class="status">ポイント: 0</div>
+      <div id="highScore" class="status">ハイスコア: 0</div>
+    </div>
+
+    <div id="problem" class="problem"></div>
+    <pre id="division" class="long-division"></pre>
+    <div class="buttons">
+      <button class="tateru" data-action="立てる">立てる</button>
+      <button class="kakeru" data-action="かける">かける</button>
+      <button class="hiku" data-action="ひく">ひく</button>
+      <button class="orosu" data-action="おろす">おろす</button>
+    </div>
+    <div id="inputWrap" class="input-wrap">
+      <label for="answerInput" id="inputLabel">数字を入力してね</label>
+      <input id="answerInput" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" />
+      <button id="submitBtn" class="submit">こたえる</button>
+    </div>
+    <div class="next-wrap"><button id="nextProblemBtn" class="next-btn">つぎのもんだい</button></div>
+    <div id="message" class="message"></div>
+    <div id="hint" class="hint"></div>
+  </main>
+
+<script>
+const levelProblems={
+1:[{dividend:24,divisor:2},{dividend:36,divisor:3},{dividend:48,divisor:4},{dividend:56,divisor:7},{dividend:63,divisor:3},{dividend:72,divisor:4},{dividend:84,divisor:7},{dividend:96,divisor:8},{dividend:45,divisor:5}],
+2:[{dividend:154,divisor:7},{dividend:148,divisor:4},{dividend:175,divisor:5},{dividend:176,divisor:8},{dividend:198,divisor:9},{dividend:204,divisor:6},{dividend:216,divisor:6},{dividend:252,divisor:6},{dividend:288,divisor:8}]
+};
+let currentLevel=1,currentMode='normal',currentStep=0,question=null,steps=[];
+let timerId=null,timeLeft=60,score=0,challengeRunning=false;
+const state={quotientFirst:' ',quotientSecond:' ',product1:'  ',remainder1:'  ',dropped:' ',done:false};
+const $=id=>document.getElementById(id);
+const els={problem:$("problem"),division:$("division"),inputWrap:$("inputWrap"),inputLabel:$("inputLabel"),answer:$("answerInput"),submit:$("submitBtn"),next:$("nextProblemBtn"),message:$("message"),hint:$("hint"),timer:$("timer"),score:$("score"),high:$("highScore"),start:$("startChallengeBtn")};
+const actionButtons=[...document.querySelectorAll('[data-action]')];
+const levelButtons=[...document.querySelectorAll('[data-level]')];
+const modeButtons=[...document.querySelectorAll('[data-mode]')];
+function highScoreKey(){return `division_highscore_level${currentLevel}`}
+function getHighScore(){return Number(localStorage.getItem(highScoreKey())||0)}
+function setHighScore(v){localStorage.setItem(highScoreKey(),String(v))}
+function updatePanels(){els.timer.textContent=`のこり: ${timeLeft}秒`;els.score.textContent=`ポイント: ${score}`;els.high.textContent=`ハイスコア: ${getHighScore()}`;}
+function pickProblem(level){const list=levelProblems[level];return list[Math.floor(Math.random()*list.length)]}
+function buildSteps(q){const s=String(q.dividend),firstChunk=Number(s.slice(0,2)),lastDigit=Number(s.slice(2)),firstQ=Math.floor(firstChunk/q.divisor),firstMul=q.divisor*firstQ,firstRem=firstChunk-firstMul,dropped=firstRem*10+lastDigit,secondQ=Math.floor(dropped/q.divisor);return[{action:'立てる',ask:`${firstChunk} ÷ ${q.divisor} は いくつかな？`,answer:String(firstQ),hint:`${q.divisor} × ? = ${firstChunk}`},{action:'かける',ask:`${q.divisor} × ${firstQ} は いくつかな？`,answer:String(firstMul),hint:'立てた数を使おう。'},{action:'ひく',ask:`${firstChunk} - ${firstMul} は いくつかな？`,answer:String(firstRem),hint:'ひき算をしよう。'},{action:'おろす',ask:`${lastDigit} をおろそう。`,answer:null,hint:'次のけたを下ろすよ。'},{action:'立てる',ask:`${dropped} ÷ ${q.divisor} は いくつかな？`,answer:String(secondQ),hint:`${q.divisor} × ? = ${dropped}`}]} 
+function renderDivision(){els.division.textContent=` ${state.quotientFirst}${state.quotientSecond}\n${question.divisor} )${question.dividend}\n  ${state.product1}\n  ----\n  ${state.remainder1}${state.dropped}`}
+function setMessage(t,type='ok'){els.message.textContent=t;els.message.className=`message ${type}`}
+function showInputIfNeeded(){const step=steps[currentStep]; if(!step||step.answer===null){els.inputWrap.classList.remove('show');return;} els.inputWrap.classList.add('show'); els.inputLabel.textContent=step.ask; els.answer.value=''; els.answer.focus();}
+function applyStep(i){if(i===0)state.quotientFirst=steps[0].answer;if(i===1)state.product1=steps[1].answer.padStart(2,' ');if(i===2)state.remainder1=steps[2].answer;if(i===3)state.dropped=String(question.dividend%10);if(i===4){state.quotientSecond=steps[4].answer;state.done=true;}}
+function newProblem(){question=pickProblem(currentLevel);steps=buildSteps(question);currentStep=0;Object.assign(state,{quotientFirst:' ',quotientSecond:' ',product1:'  ',remainder1:'  ',dropped:' ',done:false});els.problem.textContent=`${question.dividend} ÷ ${question.divisor}`;renderDivision();els.inputWrap.classList.remove('show');}
+function challengeMiss(reason){if(currentMode!=='challenge'||!challengeRunning)return;setMessage(reason,'ng');els.hint.textContent='まちがえたので次の問題へ！';newProblem();}
+function goNext(){currentStep++;renderDivision();if(currentStep>=steps.length){els.inputWrap.classList.remove('show');setMessage(`できた！ ${question.dividend} ÷ ${question.divisor} = ${question.dividend/question.divisor}`,'ok');els.hint.textContent='つぎのもんだいで続けよう！';if(currentMode==='challenge'&&challengeRunning){score+=10;updatePanels();newProblem();setMessage('正解！+10ポイント、次の問題！','ok');els.hint.textContent='';}return;}setMessage('正解！つぎへ進もう。','ok');els.hint.textContent='';showInputIfNeeded();}
+function handleAction(action){if(state.done)return;const step=steps[currentStep];if(action!==step.action){if(currentMode==='challenge'){challengeMiss(`ざんねん！今は「${step.action}」だよ。`);return;}setMessage(`今は「${step.action}」のステップだよ。`,'ng');els.hint.textContent=step.hint;return;}if(step.answer===null){applyStep(currentStep);goNext();return;}els.inputWrap.classList.add('show');els.inputLabel.textContent=step.ask;els.answer.focus();setMessage('数字を入れて「こたえる」を押してね。','ok');els.hint.textContent='';}
+function submitAnswer(){const step=steps[currentStep];if(!step||step.answer===null)return;const input=els.answer.value.trim();if(!/^\d+$/.test(input)){if(currentMode==='challenge'){challengeMiss('数字で答えよう！');return;}setMessage('数字だけ入力してね。','ng');els.hint.textContent='0〜9の数字を使おう。';return;}if(input===step.answer){applyStep(currentStep);goNext();}else{if(currentMode==='challenge'){challengeMiss('ざんねん！計算ミスだよ。');return;}setMessage('おしい！もう一回。','ng');els.hint.textContent=step.hint;}}
+function endChallenge(){challengeRunning=false;clearInterval(timerId);timerId=null;if(score>getHighScore()){setHighScore(score);}updatePanels();setMessage(`チャレンジ終了！ポイント: ${score}`,'ok');els.hint.textContent='ハイスコアをこえられるかな？';}
+function startChallenge(){currentMode='challenge';modeButtons.forEach(b=>b.classList.toggle('active',b.dataset.mode===currentMode));timeLeft=60;score=0;challengeRunning=true;newProblem();setMessage('チャレンジ開始！まちがえたら次の問題になるよ。','ok');els.hint.textContent='';updatePanels();clearInterval(timerId);timerId=setInterval(()=>{timeLeft--;updatePanels();if(timeLeft<=0)endChallenge();},1000);} 
+function resetNormal(){newProblem();setMessage('まずは「立てる」ボタンからスタート！','ok');els.hint.textContent=`レベル${currentLevel}：順番は 立てる→かける→ひく→おろす だよ。`;}
+actionButtons.forEach(btn=>btn.addEventListener('click',()=>handleAction(btn.dataset.action)));
+els.submit.addEventListener('click',submitAnswer);els.answer.addEventListener('keydown',e=>{if(e.key==='Enter')submitAnswer();});
+els.next.addEventListener('click',()=>{if(currentMode==='challenge'){setMessage('チャレンジ中は自動で次の問題になるよ。','ng');return;}resetNormal();});
+els.start.addEventListener('click',startChallenge);
+levelButtons.forEach(btn=>btn.addEventListener('click',()=>{currentLevel=Number(btn.dataset.level);levelButtons.forEach(b=>b.classList.toggle('active',Number(b.dataset.level)===currentLevel));if(currentMode==='challenge'&&challengeRunning){startChallenge();}else{updatePanels();resetNormal();}}));
+modeButtons.forEach(btn=>btn.addEventListener('click',()=>{currentMode=btn.dataset.mode;modeButtons.forEach(b=>b.classList.toggle('active',b.dataset.mode===currentMode));if(currentMode==='normal'){if(challengeRunning)endChallenge();resetNormal();}else{setMessage('「スタート(60びょう)」を押してね。','ok');els.hint.textContent='';}}));
+updatePanels();resetNormal();
+</script>
+</body>
+</html>
